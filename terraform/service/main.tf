@@ -5,7 +5,7 @@ terraform {
       # Version 6.34.0 or greater is required for manual scaling on a Cloud Run
       # service support.
       version = ">= 6.34.0"
-    } 
+    }
   }
 }
 
@@ -82,6 +82,7 @@ resource "google_cloud_run_v2_service" "scaler_service" {
       args = [
         "--target_utilization=0.8",
         "--min_instances=1",
+        "--max_instances=100",
         "--resource_name=projects/${var.cloud_run_project_id}/locations/${var.region}/services/worker",
         "--cycle_frequency=10s"
       ]

@@ -428,6 +428,8 @@ SCALER_ARGS=(
   "--target_utilization=0.8"
   # Minimum number of worker instances to always keep running. Must be >= 1.
   "--min_instances=1"
+  # Optional. Maximum number of worker instances to run.
+  "--max_instances=100"
   # The full resource name of the deployed worker.
   "--resource_name=projects/${PROJECT_ID}/locations/${REGION}/${RESOURCE_TYPE}/worker"
   # The scaling cycle frequency.
@@ -503,6 +505,10 @@ running at all times and costs are limited.
 The worker service/worker pool is autoscaled by the scaler service based on its
 utilization. The cost to run the worker depends on the Pub/Sub traffic pattern
 and increases as Pub/Sub traffic increases.
+
+To limit worker costs, set the `--max_instances` argument on the deployed scaler
+as shown in the example. The `--max_instances` argument places a maximum on the
+number of worker instances the scaler service will recommend and actuate.
 
 ### Monitoring costs
 

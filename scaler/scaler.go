@@ -66,6 +66,10 @@ type Options struct {
 	// MinInstances is the minimum number of worker instances to run.
 	MinInstances int
 
+	// MaxInstances is the maximum number of worker instances to run. Optional. If MaxInstances is
+	// nil, there is no maximum.
+	MaxInstances *int
+
 	// CycleFrequency is how often the scaling loop runs.
 	CycleFrequency time.Duration
 }
@@ -81,13 +85,29 @@ type Scaler struct {
 }
 
 // New creates a new Scaler.
-func New(loadProvider LoadProvider, adminAPI AdminAPI, options Options) *Scaler {
+func New(loadProvider LoadProvider, adminAPI AdminAPI, options Options) (*Scaler, error) {
+	err := validateOptions(options)
+	if err != nil {
+		return nil, err
+	}
 	return &Scaler{
 		ticker:       &tickerImpl{ticker: time.NewTicker(options.CycleFrequency)},
 		loadProvider: loadProvider,
 		adminAPI:     adminAPI,
 		options:      options,
+	}, nil
+}
+
+func validateOptions(options Options) error {
+	if options.MaxInstances != nil {
+		if *options.MaxInstances < 1 {
+			return fmt.Errorf("max instances (%d) must be greater than 0", *options.MaxInstances)
+		}
+		if *options.MaxInstances < options.MinInstances {
+			return fmt.Errorf("max instances (%d) must be greater than or equal to min instances (%d)", *options.MaxInstances, options.MinInstances)
+		}
 	}
+	return nil
 }
 
 // RunScalingCycle runs a single scaling cycle.
@@ -115,6 +135,9 @@ func (s *Scaler) RunScalingCycle(ctx context.Context) error {
 	}
 
 	adjustedRecommendation := max(recommendation, s.options.MinInstances)
+	if s.options.MaxInstances != nil {
+		adjustedRecommendation = min(adjustedRecommendation, *s.options.MaxInstances)
+	}
 
 	log.Printf("Current Instances: %d, Metrics: %+v, Algorithm: %s, Recommendation: %d, Adjusted Recommendation: %d", currentInstances, metrics, s.options.Algorithm, recommendation, adjustedRecommendation)
 	err = s.adminAPI.SetInstanceCount(ctx, adjustedRecommendation)

@@ -41,6 +41,7 @@ var (
 	targetLatency     = flag.Duration("target_latency", 0, "The target average pull latency.")
 	targetUtilization = flag.Float64("target_utilization", 0.8, "The target average active message utilization.")
 	minInstances      = flag.Int("min_instances", 0, "The minimum number of worker instances to run.")
+	maxInstances      = flag.Int("max_instances", 0, "The maximum number of worker instances to run.")
 	cycleFrequency    = flag.Duration("cycle_frequency", 1*time.Minute,
 		"The frequency at which to run the scaling cycle.")
 )
@@ -85,13 +86,21 @@ func main() {
 		log.Fatalf("Failed to create admin API: %v", err)
 	}
 
-	scaler := scaler.New(aggregator, adminAPI, scaler.Options{
+	options := scaler.Options{
 		TargetLatency:     *targetLatency,
 		TargetUtilization: float32(*targetUtilization),
 		Algorithm:         algorithm,
 		MinInstances:      *minInstances,
 		CycleFrequency:    *cycleFrequency,
-	})
+	}
+	if *maxInstances > 0 {
+		options.MaxInstances = maxInstances
+	}
+	scaler, err := scaler.New(aggregator, adminAPI, options)
+	if err != nil {
+		log.Fatalf("Failed to create scaler: %v", err)
+	}
+
 	go func() {
 		if err := scaler.Run(ctx); err != nil {
 			log.Printf("Failed to run scaler: %v", err)

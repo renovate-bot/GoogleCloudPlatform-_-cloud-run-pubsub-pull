@@ -63,11 +63,14 @@ func TestRunPullLatencyCycle(t *testing.T) {
 			AveragePullLatency: 20 * time.Millisecond,
 		},
 	}
-	scaler := New(loadProvider, adminAPI, Options{
+	scaler, err := New(loadProvider, adminAPI, Options{
 		TargetLatency:  10 * time.Millisecond,
 		Algorithm:      algorithms.PullLatency,
 		CycleFrequency: 1 * time.Minute,
 	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
 
 	if err := scaler.RunScalingCycle(context.Background()); err != nil {
 		t.Fatalf("RunScalingCycle() failed: %v", err)
@@ -88,11 +91,14 @@ func TestRunActiveMessagesUtilizationCycle(t *testing.T) {
 			MaxActiveMessagesLimitPerInstance: 10,
 		},
 	}
-	scaler := New(loadProvider, adminAPI, Options{
+	scaler, err := New(loadProvider, adminAPI, Options{
 		TargetUtilization: 0.8,
 		Algorithm:         algorithms.ActiveMessagesUtilization,
 		CycleFrequency:    1 * time.Minute,
 	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
 
 	if err := scaler.RunScalingCycle(context.Background()); err != nil {
 		t.Fatalf("RunScalingCycle() failed: %v", err)
@@ -113,18 +119,72 @@ func TestEnforceMinInstances(t *testing.T) {
 			MaxActiveMessagesLimitPerInstance: 10,
 		},
 	}
-	scaler := New(loadProvider, adminAPI, Options{
+	scaler, err := New(loadProvider, adminAPI, Options{
 		TargetUtilization: 0.8,
 		Algorithm:         algorithms.ActiveMessagesUtilization,
 		MinInstances:      1,
 		CycleFrequency:    1 * time.Minute,
 	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
 
 	if err := scaler.RunScalingCycle(context.Background()); err != nil {
 		t.Fatalf("RunScalingCycle() failed: %v", err)
 	}
 	if adminAPI.setInstanceCount != 1 {
 		t.Errorf("RunScalingCycle() set instance count to %d, want 1", adminAPI.setInstanceCount)
+	}
+}
+
+func TestEnforceMaxInstances(t *testing.T) {
+	adminAPI := &fakeAdminAPI{
+		currentInstanceCount: 5,
+		setInstanceCount:     0,
+	}
+	loadProvider := &fakeLoadProvider{
+		load: aggregator.AggregatedLoad{
+			AverageActiveMessages:             100.0,
+			MaxActiveMessagesLimitPerInstance: 10,
+		},
+	}
+	maxInstances := 10
+	scaler, err := New(loadProvider, adminAPI, Options{
+		TargetUtilization: 0.8,
+		Algorithm:         algorithms.ActiveMessagesUtilization,
+		MaxInstances:      &maxInstances,
+		CycleFrequency:    1 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := scaler.RunScalingCycle(context.Background()); err != nil {
+		t.Fatalf("RunScalingCycle() failed: %v", err)
+	}
+	if adminAPI.setInstanceCount != 10 {
+		t.Errorf("RunScalingCycle() set instance count to %d, want 10", adminAPI.setInstanceCount)
+	}
+}
+
+func TestInvalidMaxInstances(t *testing.T) {
+	tests := []struct {
+		minInstances int
+		maxInstances int
+	}{
+		{minInstances: 0, maxInstances: 0},
+		{minInstances: 2, maxInstances: 1},
+	}
+	for _, test := range tests {
+		adminAPI := &fakeAdminAPI{}
+		loadProvider := &fakeLoadProvider{}
+		_, err := New(loadProvider, adminAPI, Options{
+			MinInstances: test.minInstances,
+			MaxInstances: &test.maxInstances,
+		})
+		if err == nil {
+			t.Errorf("Expected New() to fail. Got nil error. MinInstances: %d, MaxInstances: %d", test.minInstances, test.maxInstances)
+		}
 	}
 }
 
@@ -138,11 +198,14 @@ func TestRunActiveMessagesUtilizationCycleInvalidTargetUtilization(t *testing.T)
 				MaxActiveMessagesLimitPerInstance: 10,
 			},
 		}
-		scaler := New(loadProvider, adminAPI, Options{
+		scaler, err := New(loadProvider, adminAPI, Options{
 			TargetUtilization: target,
 			Algorithm:         algorithms.ActiveMessagesUtilization,
 			CycleFrequency:    1 * time.Minute,
 		})
+		if err != nil {
+			t.Fatalf("New() failed: %v", err)
+		}
 
 		if err := scaler.RunScalingCycle(context.Background()); err == nil {
 			t.Fatal("Expected RunScalingCycle() to fail. Got nil error.")
