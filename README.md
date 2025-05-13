@@ -13,8 +13,8 @@ NOTE: This project is intended for demonstration purposes only. It is not
 intended for use in a production environment.
 
 NOTE: This is not an officially supported Google product. This project is not
-eligible for the [Google Open Source Software Vulnerability Rewards
-Program](https://bughunters.google.com/open-source-security).
+eligible for the
+[Google Open Source Software Vulnerability Rewards Program](https://bughunters.google.com/open-source-security).
 
 ## Architecture
 
@@ -490,3 +490,68 @@ severity>=DEFAULT
 -logName=~"projects/.*/logs/run.googleapis.com%2Frequests"
 -textPayload=~".*Received load report:.*"
 ```
+
+## Costs
+
+The deployed Cloud Run resources, the worker service or worker pool and the
+scaler service, are billed for compute time used at the
+[Cloud Run prices](https://cloud.google.com/run/pricing).
+
+The scaler service runs with max instances set to 1, so at most one instance is
+running at all times and costs are limited.
+
+The worker service/worker pool is autoscaled by the scaler service based on its
+utilization. The cost to run the worker depends on the Pub/Sub traffic pattern
+and increases as Pub/Sub traffic increases.
+
+### Monitoring costs
+
+The
+[`run.googleapis.com/container/billable_instance_time` monitoring metric](https://cloud.google.com/monitoring/api/metrics_gcp#gcp-run)
+is a real-time monitoring metric that gives a proxy for cost.
+
+To directly monitor costs, use Cloud Billing's
+[budgets](https://cloud.google.com/billing/docs/how-to/budgets) and
+[budget alerts](https://cloud.google.com/billing/docs/how-to/budgets-notification-recipients).
+Note that there is ingestion delay between when usage occurs and when the usage
+appears in Cloud Billing.
+
+### Shutting down usage to stop billing
+
+Usage and billing can be stopped two ways: deleting the billed Cloud Run
+resources or disabling billing for the whole project.
+
+#### Delete Cloud Run resources
+
+Deleting the deployed Cloud Run resources will stop accumulating any charges
+associated with this example code, but will leave any other resources in the GCP
+project active.
+
+To delete the scaler, run:
+
+```sh
+gcloud run services delete scaler \
+  --region="${REGION}" \
+  --project="${PROJECT_ID}"
+```
+
+If the worker is deployed as a worker pool, delete the worker by running:
+
+```sh
+gcloud alpha run worker-pools delete worker \
+  --region="${REGION}" \
+  --project="${PROJECT_ID}"
+```
+
+If the worker is deployed as a service, delete the worker by running:
+
+```sh
+gcloud run services delete worker \
+  --region="${REGION}" \
+  --project="${PROJECT_ID}"
+```
+
+#### Disable billing for the project
+
+To disable billing for the entire project, follow the instructions in the
+[documentation](https://cloud.google.com/billing/docs/how-to/modify-project#disable_billing_for_a_project).
