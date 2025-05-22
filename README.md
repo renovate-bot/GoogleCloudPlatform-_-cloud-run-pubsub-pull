@@ -32,7 +32,16 @@ The example has three components:
     API and the manual scaling instance count field. This doc will refer to this
     as the "scaler".
 
-Details of each component are as follows:
+Below is an overview diagram of the architecture:
+
+![Architecture diagram](architecture.png)
+
+The sidecar/library architecture within each Cloud Run instance is as shown
+below:
+
+![Instance architecture](instance_architecture.png)
+
+The following subsections describe details of each component:
 
 ### Consumer: Application business logic
 
