@@ -140,6 +140,12 @@ func (s *Scaler) RunScalingCycle(ctx context.Context) error {
 	}
 
 	log.Printf("Current Instances: %d, Metrics: %+v, Algorithm: %s, Recommendation: %d, Adjusted Recommendation: %d", currentInstances, metrics, s.options.Algorithm, recommendation, adjustedRecommendation)
+
+	if adjustedRecommendation == currentInstances {
+		log.Printf("No change in recommendation, skipping SetInstanceCount")
+		return nil
+	}
+
 	err = s.adminAPI.SetInstanceCount(ctx, adjustedRecommendation)
 	if err != nil {
 		return err

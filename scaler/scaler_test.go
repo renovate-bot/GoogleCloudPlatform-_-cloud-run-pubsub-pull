@@ -24,8 +24,9 @@ import (
 )
 
 type fakeAdminAPI struct {
-	currentInstanceCount int
-	setInstanceCount     int
+	currentInstanceCount  int
+	setInstanceCount      int
+	setInstanceCountCalls int
 }
 
 func (f *fakeAdminAPI) GetInstanceCount(ctx context.Context) (int, error) {
@@ -34,6 +35,7 @@ func (f *fakeAdminAPI) GetInstanceCount(ctx context.Context) (int, error) {
 
 func (f *fakeAdminAPI) SetInstanceCount(ctx context.Context, count int) error {
 	f.setInstanceCount = count
+	f.setInstanceCountCalls++
 	return nil
 }
 
@@ -108,6 +110,34 @@ func TestRunActiveMessagesUtilizationCycle(t *testing.T) {
 	}
 }
 
+func TestScaleDown(t *testing.T) {
+	adminAPI := &fakeAdminAPI{
+		currentInstanceCount: 20,
+		setInstanceCount:     0,
+	}
+	loadProvider := &fakeLoadProvider{
+		load: aggregator.AggregatedLoad{
+			AverageActiveMessages:             80,
+			MaxActiveMessagesLimitPerInstance: 10,
+		},
+	}
+	scaler, err := New(loadProvider, adminAPI, Options{
+		TargetUtilization: 0.8,
+		Algorithm:         algorithms.ActiveMessagesUtilization,
+		CycleFrequency:    1 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := scaler.RunScalingCycle(context.Background()); err != nil {
+		t.Fatalf("RunScalingCycle() failed: %v", err)
+	}
+	if adminAPI.setInstanceCount != 10 {
+		t.Errorf("RunScalingCycle() set instance count to %d, want 10", adminAPI.setInstanceCount)
+	}
+}
+
 func TestEnforceMinInstances(t *testing.T) {
 	adminAPI := &fakeAdminAPI{
 		currentInstanceCount: 10,
@@ -164,6 +194,34 @@ func TestEnforceMaxInstances(t *testing.T) {
 	}
 	if adminAPI.setInstanceCount != 10 {
 		t.Errorf("RunScalingCycle() set instance count to %d, want 10", adminAPI.setInstanceCount)
+	}
+}
+
+func TestSkipCallingAdminAPIForUnchangedRecommendation(t *testing.T) {
+	adminAPI := &fakeAdminAPI{
+		currentInstanceCount: 20,
+		setInstanceCount:     0,
+	}
+	loadProvider := &fakeLoadProvider{
+		load: aggregator.AggregatedLoad{
+			AverageActiveMessages:             160,
+			MaxActiveMessagesLimitPerInstance: 10,
+		},
+	}
+	scaler, err := New(loadProvider, adminAPI, Options{
+		TargetUtilization: 0.8,
+		Algorithm:         algorithms.ActiveMessagesUtilization,
+		CycleFrequency:    1 * time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := scaler.RunScalingCycle(context.Background()); err != nil {
+		t.Fatalf("RunScalingCycle() failed: %v", err)
+	}
+	if adminAPI.setInstanceCountCalls != 0 {
+		t.Errorf("RunScalingCycle() called SetInstanceCount %d times, want 0", adminAPI.setInstanceCountCalls)
 	}
 }
 
