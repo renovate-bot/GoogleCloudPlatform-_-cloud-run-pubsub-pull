@@ -257,7 +257,7 @@ terraform apply \
   -var="cloud_run_project_id=<Project ID to deploy Cloud Run resources to>" \
   -var="region=<Region to deploy to>" \
   -var="artifact_registry_repo=${ARTIFACT_REGISTRY_REPO}" \
-  -var="pubsub_subscription_project_id=<Project ID containing PubSub subscription" \
+  -var="pubsub_subscription_project_id=<Project ID containing PubSub subscription>" \
   -var="pubsub_subscription_id=<ID of the PubSub subscription>"
 ```
 
@@ -266,13 +266,7 @@ This command will:
 *   Create necessary service accounts
 *   Grant permissions
 *   Deploy the scaler service
-
-Notably, this command will not actually deploy the worker pool. Terraform
-support for Cloud Run worker pools is not launched yet. Follow the steps in the
-[Deploy in sidecar mode](#deploy) section below to actually deploy the worker
-pool. Make sure to set the shell variables in the
-[Configuration variables](#config) section above before running the `gcloud`
-commands.
+*   Deploy the worker as a Cloud Run worker pool
 
 #### Worker as a Cloud Run service
 
@@ -369,6 +363,8 @@ NOTE: The following commands deploy the `exampleconsumer` image built above as
 the Pub/Sub consumer. This is intended for demo/test purposes. In a real
 application, the `exampleconsumer` image would be replaced with the application
 business logic.
+
+
 
 ###### As a worker pool
 

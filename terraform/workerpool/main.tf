@@ -1,3 +1,13 @@
+terraform {
+  required_providers {
+    google = {
+      source = "hashicorp/google"
+      # Version 6.45.0 or greater is required for worker pool support.
+      version = ">= 6.45.0"
+    }
+  }
+}
+
 # Input variables.
 variable "cloud_run_project_id" {
   type = string
@@ -16,8 +26,12 @@ variable "pubsub_subscription_id" {
 }
 
 provider "google" {
-  region = var.region
+  region  = var.region
   project = var.cloud_run_project_id
+}
+
+data "google_project" "cloud_run_project" {
+  project_id = var.cloud_run_project_id
 }
 
 # Service Accounts
@@ -26,12 +40,12 @@ provider "google" {
 # - Worker SA
 # - Scaler SA
 resource "google_service_account" "worker_sa" {
-  account_id = "worker"
+  account_id   = "worker"
   display_name = "Worker Service Account"
 }
 
 resource "google_service_account" "scaler_sa" {
-  account_id = "scaler"
+  account_id   = "scaler"
   display_name = "Scaler Service Account"
 }
 
@@ -39,7 +53,7 @@ resource "google_service_account" "scaler_sa" {
 
 # Assume the Pub/Sub subscription already exists.
 data "google_pubsub_subscription" "subscription" {
-  name = var.pubsub_subscription_id
+  name    = var.pubsub_subscription_id
   project = var.pubsub_subscription_project_id
 }
 
@@ -48,8 +62,8 @@ data "google_pubsub_subscription" "subscription" {
 # Allow the Worker SA to subscribe to the topic.
 resource "google_pubsub_subscription_iam_member" "subscription_policy" {
   subscription = data.google_pubsub_subscription.subscription.name
-  role = "roles/pubsub.subscriber"
-  member = "serviceAccount:${google_service_account.worker_sa.email}"
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:${google_service_account.worker_sa.email}"
 }
 
 # Cloud Run resources
@@ -58,7 +72,7 @@ resource "google_pubsub_subscription_iam_member" "subscription_policy" {
 #
 # Uses the Scaler image. Sets flags to configure the Scaler options.
 resource "google_cloud_run_v2_service" "scaler_service" {
-  name = "scaler"
+  name     = "scaler"
   location = var.region
 
   template {
@@ -98,9 +112,53 @@ data "google_iam_policy" "scaler_policy_config" {
 }
 
 resource "google_cloud_run_v2_service_iam_policy" "scaler_policy" {
-  location = var.region
-  name = google_cloud_run_v2_service.scaler_service.name
+  location    = var.region
+  name        = google_cloud_run_v2_service.scaler_service.name
   policy_data = data.google_iam_policy.scaler_policy_config.policy_data
+}
+
+# Worker deployed as a Cloud Run worker pool.
+#
+# Uses the Worker image. Sets flags to configure the Worker options.
+resource "google_cloud_run_v2_worker_pool" "worker_pool" {
+  name     = "worker"
+  location = var.region
+  launch_stage = "BETA"
+
+  template {
+    containers {
+      name  = "puller"
+      image = "${var.artifact_registry_repo}/worker"
+      args = [
+        "--subscription_project_id=${var.pubsub_subscription_project_id}",
+        "--subscription_id=${var.pubsub_subscription_id}",
+        "--reporting_url=https://scaler-${data.google_project.cloud_run_project.number}.${var.region}.run.app/reportLoad",
+        "--reporting_audience=https://scaler-${data.google_project.cloud_run_project.number}.${var.region}.run.app/",
+        # Set to configure the maximum number of messages a single worker will pull
+        # from Pub/Sub at once.
+        "--max_outstanding_messages=20",
+        # The duration over which average active messages is averaged. A higher value
+        # gives more stable scaling. A lower value gives more responsive scaling.
+        "--metric_window_length=10s",
+        "--local_push_url=http://localhost:8080",
+      ]
+    }
+    containers {
+      name  = "consumer"
+      image = "${var.artifact_registry_repo}/exampleconsumer"
+      args = [
+        "--sleep_duration=1s",
+        "--nack_percent=0",
+        "-v=3",
+        "--logtostderr",
+      ]
+    }
+    service_account = google_service_account.worker_sa.email
+  }
+
+  scaling {
+    manual_instance_count = 1
+  }
 }
 
 # Worker IAM policies.
@@ -118,18 +176,13 @@ data "google_iam_policy" "worker_sa_policy_config" {
 
 resource "google_service_account_iam_policy" "worker_sa_policy" {
   service_account_id = google_service_account.worker_sa.name
-  policy_data = data.google_iam_policy.worker_sa_policy_config.policy_data
+  policy_data        = data.google_iam_policy.worker_sa_policy_config.policy_data
 }
 
-# roles/run.admin for the Scaler SA. Must be set at the project level because
-# worker pools do not yet support IAM bindings.
-resource "google_project_iam_member" "scaler_run_admin" {
-  project = var.cloud_run_project_id
-  role = "roles/run.admin"
-  member = "serviceAccount:${google_service_account.scaler_sa.email}"
+# roles/run.admin for the Scaler SA.
+resource "google_cloud_run_v2_worker_pool_iam_member" "scaler_run_admin" { 
+  location = var.region
+  name     = google_cloud_run_v2_worker_pool.worker_pool.name
+  role     = "roles/run.admin"
+  member   = "serviceAccount:${google_service_account.scaler_sa.email}"
 }
-
-# For now, refer back to the README and deploy the worker pool itself using
-# gcloud.
-#
-# TODO: Add Terraform resource for the worker pool when ready.

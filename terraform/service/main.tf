@@ -118,7 +118,7 @@ resource "google_cloud_run_v2_service_iam_policy" "scaler_policy" {
   policy_data = data.google_iam_policy.scaler_policy_config.policy_data
 }
 
-# Worker Cloud Run service.
+# Worker deployed as a Cloud Run service.
 #
 # Uses the Worker image. Sets flags to configure the Worker options.
 resource "google_cloud_run_v2_service" "worker_service" {
